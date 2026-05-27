@@ -1,0 +1,1385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDEC Quoting Stats</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #fafaf9;
+    --panel: #ffffff;
+    --ink: #18181b;
+    --ink-2: #3f3f46;
+    --ink-3: #71717a;
+    --ink-4: #a1a1aa;
+    --ink-5: #d4d4d8;
+    --line: #e4e4e7;
+    --line-soft: #f4f4f5;
+    --up: #16a34a;
+    --down: #dc2626;
+  }
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 24px 16px;
+    min-height: 100vh;
+  }
+  .mono { font-family: 'JetBrains Mono', monospace; font-feature-settings: 'tnum' 1; }
+  .wrap {
+    max-width: min(1600px, 100% - 16px);
+    margin: 0 auto;
+  }
+
+  /* View toggle */
+  .view-toggle {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 12px;
+    gap: 2px;
+  }
+  .sync-status {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    margin-right: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--ink-3);
+  }
+  .sync-status::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .sync-status[data-state="ok"] { color: var(--up); }
+  .sync-status[data-state="error"] { color: var(--down); cursor: pointer; }
+  .sync-status[data-state="saving"], .sync-status[data-state="loading"] { color: var(--ink-3); }
+  .view-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    padding: 4px 10px;
+    font-family: 'Inter', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .view-btn:first-child { border-radius: 4px 0 0 4px; }
+  .view-btn:last-child { border-radius: 0 4px 4px 0; border-left: none; }
+  .view-btn.active { background: var(--ink); color: white; border-color: var(--ink); }
+  .view-btn:hover:not(.active) { color: var(--ink); }
+
+  /* Edit Layout mode */
+  body.edit-mode .metric {
+    cursor: grab;
+    transition: outline-color 0.12s, background 0.12s, opacity 0.12s;
+    outline: 2px solid transparent;
+    outline-offset: -2px;
+    position: relative;
+  }
+  body.edit-mode .metric:active {
+    cursor: grabbing;
+  }
+  body.edit-mode .metric.dragging {
+    opacity: 0.35;
+  }
+  body.edit-mode .metric.drop-before {
+    box-shadow: inset 3px 0 0 var(--ink);
+  }
+  body.edit-mode .metric.drop-after {
+    box-shadow: inset -3px 0 0 var(--ink);
+  }
+  body.edit-mode .metric:hover {
+    outline-color: var(--ink-5);
+  }
+  body.edit-mode .metric.selected {
+    outline-color: var(--ink);
+  }
+  body.edit-mode .metric.selected::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--ink);
+    border: 2px solid white;
+    box-shadow: 0 0 0 1px var(--ink);
+    z-index: 2;
+  }
+  body.edit-mode .week-cell {
+    pointer-events: none;
+  }
+
+  /* Tweaks panel */
+  .tweaks-panel {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    width: 280px;
+    background: var(--panel);
+    border: 1px solid var(--ink);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    z-index: 50;
+    display: none;
+    font-family: 'Inter', sans-serif;
+  }
+  .tweaks-panel.open { display: block; }
+  .tweaks-head {
+    background: var(--ink);
+    color: white;
+    padding: 10px 14px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tweaks-head .title {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+  }
+  .tweaks-head .count {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    background: rgba(255,255,255,0.15);
+    padding: 2px 7px;
+    border-radius: 10px;
+  }
+  .tweaks-body {
+    padding: 14px;
+  }
+  .tweaks-empty {
+    font-size: 12px;
+    color: var(--ink-3);
+    text-align: center;
+    padding: 16px 8px;
+    line-height: 1.55;
+  }
+  .tweak-row {
+    margin-bottom: 14px;
+  }
+  .tweak-row:last-child { margin-bottom: 0; }
+  .tweak-row label {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--ink-3);
+    margin-bottom: 7px;
+  }
+  .tweak-row label .val {
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--ink);
+    font-size: 11px;
+    letter-spacing: 0.3px;
+    text-transform: none;
+  }
+  .tweak-row label .val.mixed { color: var(--ink-4); font-style: italic; }
+  .tweak-row input[type=range] {
+    width: 100%;
+    accent-color: var(--ink);
+    cursor: pointer;
+  }
+  .tweak-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+  }
+  .tweak-btn {
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink);
+    padding: 7px 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .tweak-btn:hover { background: var(--line-soft); }
+  .tweak-btn.full { grid-column: 1 / -1; }
+  .tweak-btn.dark { background: var(--ink); color: white; border-color: var(--ink); }
+  .tweak-btn.dark:hover { background: var(--ink-2); }
+
+  /* Header */
+  .header {
+    margin-bottom: 28px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .header h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    margin-bottom: 6px;
+  }
+  .header .meta {
+    font-size: 12px;
+    color: var(--ink-3);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 500;
+  }
+  .header .meta .date {
+    color: var(--ink);
+    font-weight: 600;
+  }
+
+  /* DISPLAY VIEW */
+  .metric-stack {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 8px;
+    grid-auto-flow: row dense;
+  }
+  .metric {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 16px 20px 16px;
+    grid-column: span var(--cols, 6);
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 16px;
+    align-items: center;
+  }
+  .metric-top {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 0;
+    align-items: flex-start;
+  }
+  .metric-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--ink-3);
+  }
+  .metric-delta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--ink-4);
+    font-feature-settings: 'tnum' 1;
+    text-align: left;
+  }
+  .metric-delta.up { color: var(--up); }
+  .metric-delta.down { color: var(--down); }
+
+  /* Week sequence - current week on LEFT (matches Bloom KPI layout), history extends right */
+  .metric {
+    --scale: 1;
+    --weeks: 8;
+    --cols: 6;
+    --current-emphasis: 1.6fr;
+  }
+  .week-sequence {
+    display: grid;
+    grid-template-columns: minmax(0, var(--current-emphasis)) repeat(calc(var(--weeks) - 1), minmax(0, 1fr));
+    gap: 4px;
+    margin-top: 0;
+    align-items: stretch;
+  }
+  .week-cell {
+    background: var(--line-soft);
+    padding: calc(6px * var(--scale)) 4px calc(5px * var(--scale));
+    text-align: center;
+    border-radius: 3px;
+    position: relative;
+    min-height: calc(40px * var(--scale));
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .week-cell.current {
+    background: var(--ink);
+    padding: calc(14px * var(--scale)) 8px calc(12px * var(--scale));
+    min-height: calc(76px * var(--scale));
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  }
+  .week-cell.current .week-cell-value {
+    color: white;
+    font-size: calc(24px * var(--scale));
+    letter-spacing: -0.5px;
+  }
+  .week-cell.current .week-cell-date {
+    color: rgba(255,255,255,0.7);
+    font-size: calc(10px * var(--scale));
+    margin-top: 5px;
+    font-weight: 500;
+  }
+  .week-cell-value {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: calc(16px * var(--scale));
+    font-weight: 600;
+    color: var(--ink-2);
+    line-height: 1.2;
+    font-feature-settings: 'tnum' 1;
+  }
+  .week-cell-value.empty {
+    color: var(--ink-4);
+    font-weight: 400;
+  }
+  .week-cell-date {
+    font-family: 'Inter', sans-serif;
+    font-size: calc(11px * var(--scale));
+    font-weight: 600;
+    color: var(--ink-3);
+    margin-top: 4px;
+    line-height: 1.15;
+    letter-spacing: 0.1px;
+    white-space: nowrap;
+    text-align: center;
+  }
+
+  /* ENTRY VIEW */
+  .entry-view { display: none; }
+  .entry-view.active { display: block; }
+  .display-view.hidden { display: none; }
+  .entry-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    padding: 24px;
+  }
+  .entry-week {
+    margin-bottom: 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .entry-week label,
+  .entry-field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--ink-3);
+    margin-bottom: 8px;
+  }
+  .entry-week input,
+  .entry-field input {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--ink);
+    transition: border-color 0.15s;
+  }
+  .entry-week input:focus,
+  .entry-field input:focus {
+    outline: none;
+    border-color: var(--ink);
+  }
+
+  /* Week picker (custom) */
+  .week-picker {
+    display: grid;
+    grid-template-columns: 44px 1fr 44px;
+    gap: 6px;
+    align-items: stretch;
+    position: relative;
+  }
+  .wk-arrow {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.12s, border-color 0.12s;
+    font-family: inherit;
+  }
+  .wk-arrow:hover { background: var(--line-soft); border-color: var(--ink-4); }
+  .wk-arrow:active { background: var(--line); }
+  .wk-display {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 11px 14px;
+    font-family: 'Inter', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 0.15s;
+  }
+  .wk-display:hover { border-color: var(--ink-4); }
+  .wk-display:focus { outline: none; border-color: var(--ink); }
+  .wk-hidden {
+    position: absolute !important;
+    left: 50%; bottom: 0;
+    width: 1px; height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    margin: 0; padding: 0; border: 0;
+  }
+  .entry-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .entry-field label { margin-bottom: 6px; }
+  .entry-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+  .btn {
+    padding: 10px 20px;
+    border: 1px solid var(--ink);
+    background: var(--ink);
+    color: white;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn:hover { background: var(--ink-2); }
+  .btn.secondary {
+    background: transparent;
+    color: var(--ink);
+  }
+  .btn.secondary:hover { background: var(--line-soft); }
+  .btn.danger {
+    border-color: var(--down);
+    color: var(--down);
+    background: transparent;
+  }
+  .btn.danger:hover { background: #fef2f2; }
+
+  /* Toast */
+  .toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    background: var(--ink);
+    color: white;
+    padding: 10px 18px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    opacity: 0;
+    transition: all 0.2s ease;
+    z-index: 100;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  #metricStack >[data-metric="revisions"] .metric-label,
+  #metricStack >[data-metric="sirsCreated"] .metric-label,
+  #metricStack >[data-metric="quotes"] .metric-label,
+  #metricStack >[data-metric="sirsPending"] .metric-label,
+  #metricStack >[data-metric="value"] .metric-label,
+  #metricStack >[data-metric="gp"] .metric-label { font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="view-toggle">
+    <span class="sync-status" id="syncStatus" data-state="loading" title="Click to retry">Loading…</span>
+    <button class="view-btn active" data-view="display">Dashboard</button>
+    <button class="view-btn" data-view="entry">Enter Data</button>
+    <button class="view-btn" id="editToggle" style="margin-left:8px;border-left:1px solid var(--line);border-radius:4px;">Edit Layout</button>
+  </div>
+
+  <!-- DISPLAY VIEW -->
+  <div class="display-view" id="displayView">
+    <div class="header">
+      <h1>CDEC QUOTING STATS</h1>
+      <div class="meta">Week <span class="date" id="currentWeekLabel">—</span></div>
+    </div>
+
+    <div class="metric-stack" id="metricStack"></div>
+  </div>
+
+  <!-- ENTRY VIEW -->
+  <div class="entry-view" id="entryView">
+    <div class="header">
+      <h1>Enter Weekly Stats</h1>
+      <div class="meta">Syncs to cloud</div>
+    </div>
+
+    <div class="entry-card">
+      <div class="entry-week">
+        <label>Week</label>
+        <div class="week-picker">
+          <button class="wk-arrow" id="wkPrev" type="button" aria-label="Previous week">‹</button>
+          <button class="wk-display" id="wkDisplay" type="button" aria-label="Pick a different week">—</button>
+          <button class="wk-arrow" id="wkNext" type="button" aria-label="Next week">›</button>
+          <input type="date" id="entryDate" class="wk-hidden">
+        </div>
+      </div>
+
+      <div class="entry-fields">
+        <div class="entry-field">
+          <label>Total Quotes (#)</label>
+          <input type="number" id="e-quotes" min="0" placeholder="0">
+        </div>
+        <div class="entry-field">
+          <label>Total Quote Revisions (#)</label>
+          <input type="number" id="e-revisions" min="0" placeholder="0">
+        </div>
+        <div class="entry-field">
+          <label>SIRs Created (#)</label>
+          <input type="number" id="e-sirsCreated" min="0" placeholder="0">
+        </div>
+        <div class="entry-field">
+          <label>SIRs Pending (#)</label>
+          <input type="number" id="e-sirsPending" min="0" placeholder="0">
+        </div>
+        <div class="entry-field">
+          <label>Total Quote Value ($)</label>
+          <input type="number" id="e-value" min="0" step="1000" placeholder="0">
+        </div>
+        <div class="entry-field">
+          <label>GP %</label>
+          <input type="number" id="e-gp" min="0" max="100" step="0.1" placeholder="0">
+        </div>
+      </div>
+
+      <div class="entry-actions">
+        <button class="btn danger" id="deleteBtn" style="display:none;">Delete Week</button>
+        <button class="btn secondary" id="cancelBtn">Cancel</button>
+        <button class="btn" id="saveBtn">Save Week</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast">Saved</div>
+
+<!-- Tweaks panel for resizing metric boxes -->
+<div class="tweaks-panel" id="tweaksPanel">
+  <div class="tweaks-head">
+    <span class="title">Edit Layout</span>
+    <span class="count" id="selCount">0 selected</span>
+  </div>
+  <div class="tweaks-body" id="tweaksBody">
+    <div class="tweaks-empty" id="tweaksEmpty">
+      Click any metric box to select.<br>Shift-click or use <strong>Select all</strong> to pick multiple.
+      <div class="tweak-actions" style="margin-top:14px;padding-top:0;border-top:none;">
+        <button class="tweak-btn" id="selectAllBtn">Select all</button>
+        <button class="tweak-btn" id="exitBtn">Done</button>
+      </div>
+    </div>
+    <div id="tweaksControls" style="display:none;">
+      <div class="tweak-row">
+        <label>Width <span class="val" id="widthVal">6/12</span></label>
+        <input type="range" id="widthSlider" min="2" max="12" step="1" value="6">
+      </div>
+      <div class="tweak-row">
+        <label>Size <span class="val" id="sizeVal">1.0×</span></label>
+        <input type="range" id="sizeSlider" min="0.6" max="2.2" step="0.05" value="1">
+      </div>
+      <div class="tweak-row">
+        <label>Current week emphasis <span class="val" id="empVal">1.6×</span></label>
+        <input type="range" id="empSlider" min="1" max="3" step="0.1" value="1.6">
+      </div>
+      <div class="tweak-row">
+        <label>Weeks shown <span class="val" id="weeksVal">8</span></label>
+        <input type="range" id="weeksSlider" min="3" max="12" step="1" value="8">
+      </div>
+      <div class="tweak-actions">
+        <button class="tweak-btn" id="selectAllBtn2">Select all</button>
+        <button class="tweak-btn" id="deselectBtn">Clear</button>
+        <button class="tweak-btn full" id="resetBtn">Reset selected to defaults</button>
+        <button class="tweak-btn dark full" id="exitBtn2">Done</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// JSONBin cloud sync (replaces localStorage)
+// ============================================================
+const JSONBIN_BIN_ID = '6a164784f47d5c455c3b5339';
+const JSONBIN_KEY = '$2a$10$7hK1JQUXpSLYOIjrSo6q/O7PAfdATKzcMD7Cq76ENUU.6W.WpwV5C';
+const JSONBIN_URL = 'https://api.jsonbin.io/v3/b/' + JSONBIN_BIN_ID;
+
+let data = [];
+let layout = {};
+let cloudReady = false;       // true once initial load completes
+let pushTimer = null;
+
+function setSyncStatus(state, text) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  el.dataset.state = state;
+  el.textContent = text;
+}
+
+async function loadFromCloud() {
+  setSyncStatus('loading', 'Loading…');
+  try {
+    const res = await fetch(JSONBIN_URL + '/latest', {
+      headers: { 'X-Master-Key': JSONBIN_KEY, 'X-Bin-Meta': 'false' }
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const record = await res.json();
+    data = Array.isArray(record && record.data) ? record.data : [];
+    layout = (record && typeof record.layout === 'object' && record.layout) ? record.layout : {};
+    if (record && Array.isArray(record.order)) {
+      FIELDS.sort((a, b) => {
+        const ai = record.order.indexOf(a.key); const bi = record.order.indexOf(b.key);
+        if (ai < 0 && bi < 0) return 0;
+        if (ai < 0) return 1;
+        if (bi < 0) return -1;
+        return ai - bi;
+      });
+    }
+
+    // One-shot migration from old localStorage if cloud is empty
+    if (data.length === 0) {
+      try {
+        const legacyData = JSON.parse(localStorage.getItem('cdec_quoting_stats_v3') || 'null');
+        if (Array.isArray(legacyData) && legacyData.length > 0) {
+          data = legacyData;
+          const legacyLayout = JSON.parse(localStorage.getItem('cdec_layout_v1') || 'null');
+          if (legacyLayout && typeof legacyLayout === 'object') layout = legacyLayout;
+          const legacyOrder = JSON.parse(localStorage.getItem('cdec_layout_order_v1') || 'null');
+          if (Array.isArray(legacyOrder)) {
+            FIELDS.sort((a, b) => {
+              const ai = legacyOrder.indexOf(a.key); const bi = legacyOrder.indexOf(b.key);
+              if (ai < 0 && bi < 0) return 0;
+              if (ai < 0) return 1;
+              if (bi < 0) return -1;
+              return ai - bi;
+            });
+          }
+          cloudReady = true;
+          await pushToCloud();   // upload the migrated data right away
+          localStorage.removeItem('cdec_quoting_stats_v3');
+          localStorage.removeItem('cdec_layout_v1');
+          localStorage.removeItem('cdec_layout_order_v1');
+          return;
+        }
+      } catch (e) {
+        console.warn('Legacy localStorage migration skipped:', e);
+      }
+    }
+
+    cloudReady = true;
+    setSyncStatus('ok', 'Synced');
+  } catch (err) {
+    console.error('JSONBin load failed', err);
+    setSyncStatus('error', 'Offline — tap to retry');
+  }
+}
+
+async function pushToCloud() {
+  if (!cloudReady) return; // never overwrite cloud before initial load completes
+  setSyncStatus('saving', 'Saving…');
+  const payload = {
+    data: data,
+    layout: layout,
+    order: FIELDS.map(f => f.key)
+  };
+  try {
+    const res = await fetch(JSONBIN_URL, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Master-Key': JSONBIN_KEY
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const ts = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
+    setSyncStatus('ok', 'Synced ' + ts);
+  } catch (err) {
+    console.error('JSONBin save failed', err);
+    setSyncStatus('error', 'Save failed — tap to retry');
+  }
+}
+
+function schedulePush() {
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushToCloud, 600);
+}
+
+// Click the sync indicator to manually retry after an error
+document.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('syncStatus');
+  if (el) el.addEventListener('click', () => {
+    if (el.dataset.state === 'error') {
+      if (cloudReady) pushToCloud(); else loadFromCloud().then(() => renderDisplay());
+    }
+  });
+});
+
+const FIELDS = [
+  { key: 'revisions', label: 'Quote Revisions', fmt: 'n', lowerIsBetter: true },
+  { key: 'sirsCreated', label: 'SIRs Created', fmt: 'n', lowerIsBetter: false },
+  { key: 'quotes', label: 'Total Quotes', fmt: 'n', lowerIsBetter: false },
+  { key: 'sirsPending', label: 'SIRs Pending', fmt: 'n', lowerIsBetter: false },
+  { key: 'value', label: 'Total Quote Value', fmt: '$', lowerIsBetter: false },
+  { key: 'gp', label: 'GP %', fmt: 'pct', lowerIsBetter: false }
+];
+
+const WEEKS_TO_SHOW = 8;
+
+function fmt(val, type) {
+  if (val == null || val === '' || isNaN(val)) return null;
+  if (type === '$') {
+    if (val >= 1_000_000) return '$' + (val/1_000_000).toFixed(2) + 'M';
+    if (val >= 1_000) return '$' + (val/1_000).toFixed(0) + 'K';
+    return '$' + val.toLocaleString();
+  }
+  if (type === 'pct') return val.toFixed(1) + '%';
+  return val.toLocaleString();
+}
+function fmtCompact(val, type) {
+  if (val == null || val === '' || isNaN(val)) return null;
+  if (type === '$') {
+    if (val >= 1_000_000) return (val/1_000_000).toFixed(1) + 'M';
+    if (val >= 1_000) return (val/1_000).toFixed(0) + 'K';
+    return val.toString();
+  }
+  if (type === 'pct') return val.toFixed(0) + '%';
+  return val.toString();
+}
+function formatDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso + 'T00:00:00');
+  return d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+function weekRange(iso) {
+  const d = new Date(iso + 'T00:00:00');
+  const dow = d.getDay();
+  const sun = new Date(d);
+  sun.setDate(d.getDate() - dow);
+  const sat = new Date(sun);
+  sat.setDate(sun.getDate() + 6);
+  return { sun, sat };
+}
+function weekSaturday(iso) {
+  const { sat } = weekRange(iso);
+  const y = sat.getFullYear();
+  const m = String(sat.getMonth() + 1).padStart(2, '0');
+  const d = String(sat.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+function formatDateShort(iso) {
+  if (!iso) return '';
+  const { sun, sat } = weekRange(iso);
+  const fmt = (d) => d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+  return `${fmt(sun)} – ${fmt(sat)}`;
+}
+
+function getFriday(d) {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = date.getDate() - day + (day === 0 ? -2 : 5);
+  return new Date(date.setDate(diff)).toISOString().slice(0,10);
+}
+
+function save() { schedulePush(); }
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1600);
+}
+
+function migrateWeekKeys() {
+  const byWeek = {};
+  data.forEach(r => {
+    const sat = weekSaturday(r.week);
+    if (!byWeek[sat]) byWeek[sat] = { week: sat };
+    FIELDS.forEach(f => {
+      if (r[f.key] != null && r[f.key] !== '' && !isNaN(r[f.key])) {
+        byWeek[sat][f.key] = r[f.key];
+      }
+    });
+  });
+  const migrated = Object.values(byWeek).sort((a, b) => a.week.localeCompare(b.week));
+  if (JSON.stringify(migrated) !== JSON.stringify(data)) {
+    data = migrated;
+    save();
+  }
+}
+
+function renderDisplay() {
+  const sorted = [...data].sort((a,b) => a.week.localeCompare(b.week));
+  const current = sorted[sorted.length - 1];
+  const prev = sorted[sorted.length - 2];
+  const history = sorted.slice(0, -1);
+  function avgOf(key) {
+    const vals = history.map(r => r[key]).filter(v => v != null && v !== '' && !isNaN(v)).map(Number);
+    if (!vals.length) return null;
+    return vals.reduce((a,b) => a + b, 0) / vals.length;
+  }
+
+  document.getElementById('currentWeekLabel').textContent = current ? (function(){
+    const { sun, sat } = weekRange(current.week);
+    const f = (d) => d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+    const fShort = (d) => d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+    return `${fShort(sun)} – ${f(sat)}`;
+  })() : '—';
+
+  const recent = sorted.slice(-WEEKS_TO_SHOW);
+  const padded = [];
+  for (let i = 0; i < WEEKS_TO_SHOW - recent.length; i++) padded.push(null);
+  padded.push(...recent);
+
+  const stack = document.getElementById('metricStack');
+  stack.innerHTML = FIELDS.map(f => {
+    const curVal = current?.[f.key];
+    const avgVal = avgOf(f.key);
+
+    let deltaHtml = '<span class="metric-delta"></span>';
+    if (curVal != null && curVal !== '' && !isNaN(curVal) &&
+        avgVal != null && !isNaN(avgVal)) {
+      const diff = curVal - avgVal;
+      let txt;
+      if (f.fmt === 'pct') {
+        const sign = diff >= 0 ? '+' : '';
+        txt = `${sign}${diff.toFixed(1)}pp vs avg`;
+      } else if (avgVal === 0) {
+        txt = diff > 0 ? '+new' : '—';
+      } else {
+        const pct = (diff / Math.abs(avgVal)) * 100;
+        const sign = diff >= 0 ? '+' : '';
+        txt = `${sign}${pct.toFixed(0)}% vs avg`;
+      }
+      let cls = '';
+      if (f.lowerIsBetter) {
+        cls = diff < 0 ? 'up' : (diff > 0 ? 'down' : '');
+      } else {
+        cls = diff > 0 ? 'up' : (diff < 0 ? 'down' : '');
+      }
+      deltaHtml = `<span class="metric-delta ${cls}">${txt}</span>`;
+    }
+
+    const reversed = [...padded].reverse();
+    const cells = reversed.map((row, i) => {
+      const isCurrent = i === 0;
+      if (!row) {
+        return `<div class="week-cell ${isCurrent ? 'current' : ''}">
+          <div class="week-cell-value empty">—</div>
+          <div class="week-cell-date"></div>
+        </div>`;
+      }
+      const v = row[f.key];
+      const display = (v == null || v === '' || isNaN(v))
+        ? `<div class="week-cell-value empty">—</div>`
+        : `<div class="week-cell-value">${fmtCompact(v, f.fmt)}</div>`;
+      return `<div class="week-cell ${isCurrent ? 'current' : ''}">
+        ${display}
+        <div class="week-cell-date">${formatDateShort(row.week)}</div>
+      </div>`;
+    }).join('');
+
+    return `
+      <div class="metric">
+        <div class="metric-top">
+          <span class="metric-label">${f.label}</span>
+          ${deltaHtml}
+        </div>
+        <div class="week-sequence">${cells}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// View switching
+const displayView = document.getElementById('displayView');
+const entryView = document.getElementById('entryView');
+const viewBtns = document.querySelectorAll('.view-btn[data-view]');
+
+function switchView(view) {
+  viewBtns.forEach(b => b.classList.toggle('active', b.dataset.view === view));
+  if (view === 'display') {
+    displayView.classList.remove('hidden');
+    entryView.classList.remove('active');
+    renderDisplay();
+  } else {
+    displayView.classList.add('hidden');
+    entryView.classList.add('active');
+    loadEntryForm();
+  }
+}
+
+viewBtns.forEach(b => b.addEventListener('click', () => switchView(b.dataset.view)));
+
+// Entry form
+const entryDate = document.getElementById('entryDate');
+const wkDisplay = document.getElementById('wkDisplay');
+const wkPrev = document.getElementById('wkPrev');
+const wkNext = document.getElementById('wkNext');
+
+entryDate.value = weekSaturday((function(){
+  const t = new Date();
+  const y = t.getFullYear();
+  const m = String(t.getMonth() + 1).padStart(2, '0');
+  const d = String(t.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+})());
+
+function updateWkDisplay() {
+  const v = entryDate.value;
+  if (!v) { wkDisplay.textContent = '—'; return; }
+  const { sun, sat } = weekRange(v);
+  const fShort = (d) => d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+  const fYr = (d) => d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+  wkDisplay.textContent = `${fShort(sun)} – ${fYr(sat)}`;
+}
+
+function setEntryWeek(iso) {
+  if (!iso) return;
+  entryDate.value = weekSaturday(iso);
+  updateWkDisplay();
+  loadEntryForm();
+}
+
+function loadEntryForm() {
+  const wk = entryDate.value;
+  const row = data.find(r => r.week === wk);
+  FIELDS.forEach(f => {
+    document.getElementById('e-' + f.key).value = row?.[f.key] ?? '';
+  });
+  document.getElementById('deleteBtn').style.display = row ? 'block' : 'none';
+}
+
+updateWkDisplay();
+
+wkPrev.addEventListener('click', () => {
+  const d = new Date(entryDate.value + 'T00:00:00');
+  d.setDate(d.getDate() - 7);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  setEntryWeek(`${y}-${m}-${day}`);
+});
+wkNext.addEventListener('click', () => {
+  const d = new Date(entryDate.value + 'T00:00:00');
+  d.setDate(d.getDate() + 7);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  setEntryWeek(`${y}-${m}-${day}`);
+});
+wkDisplay.addEventListener('click', () => {
+  if (entryDate.showPicker) {
+    try { entryDate.showPicker(); } catch(_) { entryDate.focus(); entryDate.click(); }
+  } else {
+    entryDate.focus();
+    entryDate.click();
+  }
+});
+entryDate.addEventListener('change', () => {
+  setEntryWeek(entryDate.value);
+});
+
+document.getElementById('saveBtn').addEventListener('click', () => {
+  const wk = entryDate.value;
+  if (!wk) { showToast('Pick a week first'); return; }
+  const canon = weekSaturday(wk);
+  const newRow = { week: canon };
+  let hasAny = false;
+  FIELDS.forEach(f => {
+    const v = document.getElementById('e-' + f.key).value;
+    if (v !== '') { newRow[f.key] = parseFloat(v); hasAny = true; }
+    else newRow[f.key] = null;
+  });
+  if (!hasAny) { showToast('Enter at least one value'); return; }
+
+  const idx = data.findIndex(r => r.week === canon);
+  if (idx >= 0) { data[idx] = newRow; showToast('Updated'); }
+  else { data.push(newRow); showToast('Saved'); }
+  data.sort((a,b) => a.week.localeCompare(b.week));
+  save();
+  switchView('display');
+});
+
+document.getElementById('cancelBtn').addEventListener('click', () => switchView('display'));
+
+document.getElementById('deleteBtn').addEventListener('click', () => {
+  const wk = entryDate.value;
+  const { sun, sat } = weekRange(wk);
+  const fShort = (d) => d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short' });
+  const fYr = (d) => d.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+  if (confirm(`Delete data for week ${fShort(sun)} – ${fYr(sat)}?`)) {
+    data = data.filter(r => r.week !== wk);
+    save();
+    showToast('Deleted');
+    switchView('display');
+  }
+});
+
+/* ============================================================
+   EDIT LAYOUT MODE — selection + per-metric size tweaks
+   ============================================================ */
+const DEFAULT_LAYOUT = { scale: 1, emphasis: 1.7, weeks: 8, cols: 12 };
+
+function saveOrder() { schedulePush(); }
+
+let editMode = false;
+let selected = new Set();
+
+const editToggle = document.getElementById('editToggle');
+const tweaksPanel = document.getElementById('tweaksPanel');
+const tweaksEmpty = document.getElementById('tweaksEmpty');
+const tweaksControls = document.getElementById('tweaksControls');
+const selCount = document.getElementById('selCount');
+const sizeSlider = document.getElementById('sizeSlider');
+const empSlider = document.getElementById('empSlider');
+const weeksSlider = document.getElementById('weeksSlider');
+const widthSlider = document.getElementById('widthSlider');
+const sizeVal = document.getElementById('sizeVal');
+const empVal = document.getElementById('empVal');
+const weeksVal = document.getElementById('weeksVal');
+const widthVal = document.getElementById('widthVal');
+
+function getMetricLayout(key) {
+  return { ...DEFAULT_LAYOUT, ...(layout[key] || {}) };
+}
+function saveLayout() { schedulePush(); }
+function applyLayoutToDOM() {
+  document.querySelectorAll('.metric').forEach(el => {
+    const key = el.dataset.metric;
+    const L = getMetricLayout(key);
+    el.style.setProperty('--scale', L.scale);
+    el.style.setProperty('--current-emphasis', L.emphasis + 'fr');
+    el.style.setProperty('--weeks', L.weeks);
+    el.style.setProperty('--cols', L.cols);
+  });
+}
+
+function setEditMode(on) {
+  editMode = on;
+  document.body.classList.toggle('edit-mode', on);
+  editToggle.classList.toggle('active', on);
+  tweaksPanel.classList.toggle('open', on);
+  if (!on) {
+    selected.clear();
+    document.querySelectorAll('.metric.selected').forEach(m => m.classList.remove('selected'));
+  }
+  document.querySelectorAll('#metricStack .metric').forEach(m => {
+    m.setAttribute('draggable', on ? 'true' : 'false');
+  });
+  refreshPanel();
+}
+
+function refreshPanel() {
+  const n = selected.size;
+  selCount.textContent = n + ' selected';
+  if (n === 0) {
+    tweaksEmpty.style.display = 'block';
+    tweaksControls.style.display = 'none';
+    return;
+  }
+  tweaksEmpty.style.display = 'none';
+  tweaksControls.style.display = 'block';
+
+  const keys = [...selected];
+  const vals = keys.map(k => getMetricLayout(k));
+  const allSame = (prop) => vals.every(v => v[prop] === vals[0][prop]);
+
+  if (allSame('scale')) {
+    sizeSlider.value = vals[0].scale;
+    sizeVal.textContent = (+vals[0].scale).toFixed(2) + '×';
+    sizeVal.classList.remove('mixed');
+  } else {
+    sizeVal.textContent = 'mixed';
+    sizeVal.classList.add('mixed');
+  }
+  if (allSame('emphasis')) {
+    empSlider.value = vals[0].emphasis;
+    empVal.textContent = (+vals[0].emphasis).toFixed(1) + '×';
+    empVal.classList.remove('mixed');
+  } else {
+    empVal.textContent = 'mixed';
+    empVal.classList.add('mixed');
+  }
+  if (allSame('weeks')) {
+    weeksSlider.value = vals[0].weeks;
+    weeksVal.textContent = vals[0].weeks;
+    weeksVal.classList.remove('mixed');
+  } else {
+    weeksVal.textContent = 'mixed';
+    weeksVal.classList.add('mixed');
+  }
+  if (allSame('cols')) {
+    widthSlider.value = vals[0].cols;
+    widthVal.textContent = vals[0].cols + '/12';
+    widthVal.classList.remove('mixed');
+  } else {
+    widthVal.textContent = 'mixed';
+    widthVal.classList.add('mixed');
+  }
+}
+
+function applyToSelected(prop, value, displayEl, displayFmt) {
+  selected.forEach(k => {
+    layout[k] = { ...getMetricLayout(k), [prop]: value };
+  });
+  saveLayout();
+  if (prop === 'weeks') {
+    renderDisplay();
+    document.querySelectorAll('.metric').forEach(el => {
+      if (selected.has(el.dataset.metric)) el.classList.add('selected');
+    });
+  }
+  applyLayoutToDOM();
+  if (displayEl) {
+    displayEl.textContent = displayFmt ? displayFmt(value) : value;
+    displayEl.classList.remove('mixed');
+  }
+}
+
+sizeSlider.addEventListener('input', e => {
+  applyToSelected('scale', +e.target.value, sizeVal, v => v.toFixed(2) + '×');
+});
+empSlider.addEventListener('input', e => {
+  applyToSelected('emphasis', +e.target.value, empVal, v => v.toFixed(1) + '×');
+});
+weeksSlider.addEventListener('input', e => {
+  applyToSelected('weeks', +e.target.value, weeksVal, v => String(v));
+});
+widthSlider.addEventListener('input', e => {
+  applyToSelected('cols', +e.target.value, widthVal, v => v + '/12');
+});
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  selected.forEach(k => { delete layout[k]; });
+  saveLayout();
+  renderDisplay();
+  document.querySelectorAll('.metric').forEach(el => {
+    if (selected.has(el.dataset.metric)) el.classList.add('selected');
+  });
+  applyLayoutToDOM();
+  refreshPanel();
+});
+
+function selectAll() {
+  document.querySelectorAll('.metric').forEach(el => {
+    selected.add(el.dataset.metric);
+    el.classList.add('selected');
+  });
+  refreshPanel();
+}
+function clearSelection() {
+  selected.clear();
+  document.querySelectorAll('.metric.selected').forEach(el => el.classList.remove('selected'));
+  refreshPanel();
+}
+
+document.getElementById('selectAllBtn').addEventListener('click', selectAll);
+document.getElementById('selectAllBtn2').addEventListener('click', selectAll);
+document.getElementById('deselectBtn').addEventListener('click', clearSelection);
+document.getElementById('exitBtn').addEventListener('click', () => setEditMode(false));
+document.getElementById('exitBtn2').addEventListener('click', () => setEditMode(false));
+
+editToggle.addEventListener('click', () => setEditMode(!editMode));
+
+/* ---------------- Drag-to-reorder ---------------- */
+let dragKey = null;
+const stackEl = document.getElementById('metricStack');
+
+function clearDropMarkers() {
+  document.querySelectorAll('.metric.drop-before, .metric.drop-after').forEach(m => {
+    m.classList.remove('drop-before', 'drop-after');
+  });
+}
+
+stackEl.addEventListener('dragstart', (e) => {
+  if (!editMode) { e.preventDefault(); return; }
+  const m = e.target.closest('.metric');
+  if (!m) return;
+  dragKey = m.dataset.metric;
+  m.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+  try { e.dataTransfer.setData('text/plain', dragKey); } catch (_) {}
+});
+
+stackEl.addEventListener('dragend', () => {
+  document.querySelectorAll('.metric.dragging').forEach(m => m.classList.remove('dragging'));
+  clearDropMarkers();
+  dragKey = null;
+});
+
+stackEl.addEventListener('dragover', (e) => {
+  if (!dragKey) return;
+  const target = e.target.closest('.metric');
+  if (!target || target.dataset.metric === dragKey) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  const rect = target.getBoundingClientRect();
+  const useHorizontal = rect.width > rect.height;
+  const before = useHorizontal
+    ? (e.clientX - rect.left) < rect.width / 2
+    : (e.clientY - rect.top) < rect.height / 2;
+  clearDropMarkers();
+  target.classList.add(before ? 'drop-before' : 'drop-after');
+});
+
+stackEl.addEventListener('dragleave', (e) => {
+  if (!stackEl.contains(e.relatedTarget)) clearDropMarkers();
+});
+
+stackEl.addEventListener('drop', (e) => {
+  if (!dragKey) return;
+  const target = e.target.closest('.metric');
+  if (!target || target.dataset.metric === dragKey) { clearDropMarkers(); return; }
+  e.preventDefault();
+  const rect = target.getBoundingClientRect();
+  const useHorizontal = rect.width > rect.height;
+  const before = useHorizontal
+    ? (e.clientX - rect.left) < rect.width / 2
+    : (e.clientY - rect.top) < rect.height / 2;
+  const srcKey = dragKey;
+  const dstKey = target.dataset.metric;
+  const fromIdx = FIELDS.findIndex(f => f.key === srcKey);
+  if (fromIdx < 0) { clearDropMarkers(); return; }
+  const [moved] = FIELDS.splice(fromIdx, 1);
+  let toIdx = FIELDS.findIndex(f => f.key === dstKey);
+  if (!before) toIdx++;
+  FIELDS.splice(toIdx, 0, moved);
+  saveOrder();
+  clearDropMarkers();
+  renderDisplay();
+  document.querySelectorAll('#metricStack .metric').forEach(el => {
+    if (selected.has(el.dataset.metric)) el.classList.add('selected');
+  });
+});
+
+stackEl.addEventListener('click', (e) => {
+  if (dragKey) e.stopPropagation();
+}, true);
+
+document.getElementById('metricStack').addEventListener('click', (e) => {
+  if (!editMode) return;
+  const metric = e.target.closest('.metric');
+  if (!metric) return;
+  e.preventDefault();
+  const key = metric.dataset.metric;
+  if (e.shiftKey || e.metaKey || e.ctrlKey) {
+    if (selected.has(key)) { selected.delete(key); metric.classList.remove('selected'); }
+    else { selected.add(key); metric.classList.add('selected'); }
+  } else {
+    const wasOnlyThis = selected.size === 1 && selected.has(key);
+    document.querySelectorAll('.metric.selected').forEach(m => m.classList.remove('selected'));
+    selected.clear();
+    if (!wasOnlyThis) {
+      selected.add(key);
+      metric.classList.add('selected');
+    }
+  }
+  refreshPanel();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (!editMode) return;
+  if (e.key === 'Escape') setEditMode(false);
+  if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
+    e.preventDefault();
+    selectAll();
+  }
+});
+
+// Patch renderDisplay so each .metric gets data-metric and the current per-metric layout vars
+const _origRender = renderDisplay;
+renderDisplay = function() {
+  _origRender();
+  const metricEls = document.querySelectorAll('#metricStack .metric');
+  metricEls.forEach((el, i) => {
+    el.dataset.metric = FIELDS[i].key;
+    el.setAttribute('draggable', editMode ? 'true' : 'false');
+  });
+  applyLayoutToDOM();
+};
+
+function rebuildWeekSequences() {
+  const sorted = [...data].sort((a,b) => a.week.localeCompare(b.week));
+  document.querySelectorAll('#metricStack .metric').forEach((metricEl, i) => {
+    const f = FIELDS[i];
+    const L = getMetricLayout(f.key);
+    const weeks = L.weeks;
+    const recent = sorted.slice(-weeks);
+    const padded = [];
+    for (let j = 0; j < weeks - recent.length; j++) padded.push(null);
+    padded.push(...recent);
+    const reversed = [...padded].reverse();
+    const cells = reversed.map((row, idx) => {
+      const isCurrent = idx === 0;
+      if (!row) {
+        return `<div class="week-cell ${isCurrent ? 'current' : ''}">
+          <div class="week-cell-value empty">—</div>
+          <div class="week-cell-date"></div>
+        </div>`;
+      }
+      const v = row[f.key];
+      const display = (v == null || v === '' || isNaN(v))
+        ? `<div class="week-cell-value empty">—</div>`
+        : `<div class="week-cell-value">${fmtCompact(v, f.fmt)}</div>`;
+      return `<div class="week-cell ${isCurrent ? 'current' : ''}">
+        ${display}
+        <div class="week-cell-date">${formatDateShort(row.week)}</div>
+      </div>`;
+    }).join('');
+    const seq = metricEl.querySelector('.week-sequence');
+    if (seq) seq.innerHTML = cells;
+  });
+}
+
+const _render2 = renderDisplay;
+renderDisplay = function() {
+  _render2();
+  rebuildWeekSequences();
+  applyLayoutToDOM();
+};
+
+// Boot: load from cloud, then migrate week keys, then render.
+async function init() {
+  await loadFromCloud();
+  migrateWeekKeys();
+  if (typeof loadEntryForm === 'function') loadEntryForm();
+  renderDisplay();
+}
+init();
+</script>
+</body>
+</html>
