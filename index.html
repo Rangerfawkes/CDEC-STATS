@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow,noarchive">
 <title>CDEC Quoting Stats</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -631,11 +632,10 @@
 
 <script>
 // ============================================================
-// JSONBin cloud sync (replaces localStorage)
+// Cloud sync via Cloudflare Pages Function (no API key in browser).
+// The proxy at /api/data holds the JSONBin master key server-side.
 // ============================================================
-const JSONBIN_BIN_ID = '6a164784f47d5c455c3b5339';
-const JSONBIN_KEY = '$2a$10$7hK1JQUXpSLYOIjrSo6q/O7PAfdATKzcMD7Cq76ENUU.6W.WpwV5C';
-const JSONBIN_URL = 'https://api.jsonbin.io/v3/b/' + JSONBIN_BIN_ID;
+const API_URL = '/api/data';
 
 let data = [];
 let layout = {};
@@ -652,9 +652,7 @@ function setSyncStatus(state, text) {
 async function loadFromCloud() {
   setSyncStatus('loading', 'Loading…');
   try {
-    const res = await fetch(JSONBIN_URL + '/latest', {
-      headers: { 'X-Master-Key': JSONBIN_KEY, 'X-Bin-Meta': 'false' }
-    });
+    const res = await fetch(API_URL, { cache: 'no-store' });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const record = await res.json();
     data = Array.isArray(record && record.data) ? record.data : [];
@@ -702,7 +700,7 @@ async function loadFromCloud() {
     cloudReady = true;
     setSyncStatus('ok', 'Synced');
   } catch (err) {
-    console.error('JSONBin load failed', err);
+    console.error('Cloud load failed', err);
     setSyncStatus('error', 'Offline — tap to retry');
   }
 }
@@ -716,19 +714,16 @@ async function pushToCloud() {
     order: FIELDS.map(f => f.key)
   };
   try {
-    const res = await fetch(JSONBIN_URL, {
+    const res = await fetch(API_URL, {
       method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Master-Key': JSONBIN_KEY
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const ts = new Date().toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit' });
     setSyncStatus('ok', 'Synced ' + ts);
   } catch (err) {
-    console.error('JSONBin save failed', err);
+    console.error('Cloud save failed', err);
     setSyncStatus('error', 'Save failed — tap to retry');
   }
 }
